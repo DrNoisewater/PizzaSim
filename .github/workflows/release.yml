@@ -1,0 +1,85 @@
+# Manual Windows release. Actions tab -> "Release (Windows)" -> Run workflow -> enter a version like 1.3.0.
+# Tests must pass, then it builds the Electron app, zips it as PizzaSIM-v<version>-win-x64.zip,
+# creates tag v<version> and a GitHub Release with that zip and auto-generated notes.
+name: Release (Windows)
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release, without the "v" (e.g. 1.3.0)'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
+    env:
+      VERSION: ${{ inputs.version }}
+      APP_NAME: PizzaSIM
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check version and tag
+        run: |
+          if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([-.][0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::Version '$VERSION' is not like 1.3.0 (no leading v)."
+            exit 1
+          fi
+          if git ls-remote --exit-code --tags origin "refs/tags/v$VERSION" > /dev/null; then
+            echo "::error::Tag v$VERSION already exists. Pick a new version, or delete the old tag and release first."
+            exit 1
+          fi
+          pkg=$(node -p "require('./package.json').version")
+          if [ "$pkg" != "$VERSION" ]; then
+            echo "::warning::package.json and src/data/meta.ts say $pkg but you are releasing $VERSION. The .exe gets $VERSION; the in-game version label still shows $pkg until you bump both files."
+          fi
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Test
+        run: |
+          npm run typecheck
+          npx tsx scripts/systems-test.ts
+          npx tsx scripts/migrate-test.ts scripts/itch/save-0.3.21.json
+          npx tsx scripts/sim-test.ts 10 7 standard q
+
+      - name: Build (release)
+        run: |
+          npm run build:desktop
+          npx electron-builder --win dir --x64 --publish never "-c.extraMetadata.version=$VERSION"
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+
+      - name: Package zip
+        shell: pwsh
+        run: |
+          $zip = "$env:APP_NAME-v$env:VERSION-win-x64.zip"
+          if (-not (Test-Path "release/win-unpacked/Pizza SIM.exe")) { throw "release/win-unpacked/Pizza SIM.exe was not built" }
+          Compress-Archive -Path "release/win-unpacked/*" -DestinationPath $zip -CompressionLevel Optimal
+          Get-Item $zip | Format-Table Name, Length
+          "ZIP=$zip" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Create tag and GitHub Release
+        run: |
+          gh release create "v$VERSION" "$ZIP" \
+            --target "$GITHUB_SHA" \
+            --title "Pizza SIM v$VERSION" \
+            --generate-notes
