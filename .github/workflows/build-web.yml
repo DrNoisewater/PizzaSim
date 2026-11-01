@@ -1,0 +1,65 @@
+# Builds the browser (HTML5) version for itch.io on every push.
+# Pushing a version tag (e.g. v0.4.3) also publishes a GitHub Release with:
+#   PizzaSim-<version>-itch.zip  -> upload to itch.io as "This file will be played in the browser"
+#   PizzaSim-<version>.html      -> the same game as one self-contained HTML file
+# Optional: add repository secret BUTLER_API_KEY (and variable ITCH_TARGET, e.g. "user/pizza-sim")
+# to push tagged builds straight to itch.io's "html5" channel.
+name: Build HTML game
+
+on:
+  push:
+    branches: ['**']
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  web:
+    runs-on: ubuntu-latest
+    env:
+      BUTLER_API_KEY: ${{ secrets.BUTLER_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: npm run typecheck
+      - run: npm run build
+      - name: Check itch.io zip
+        run: |
+          ls -la dist
+          unzip -l dist/PizzaSim-*-itch.zip | grep -q ' index.html$'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: PizzaSIM-HTML
+          path: |
+            dist/PizzaSim-*-itch.zip
+            dist/PizzaSim-*.html
+          if-no-files-found: error
+      - name: Publish GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          name: Pizza SIM ${{ github.ref_name }}
+          body: |
+            HTML5 build for itch.io.
+
+            - **PizzaSim-*-itch.zip**: upload to itch.io, kind of project "HTML", and tick "This file will be played in the browser".
+            - **PizzaSim-*.html**: the whole game in one file; open it in any modern browser.
+
+            See CHANGELOG.md for what changed.
+          files: |
+            dist/PizzaSim-*-itch.zip
+            dist/PizzaSim-*.html
+          fail_on_unmatched_files: true
+      - name: Push to itch.io (optional)
+        if: startsWith(github.ref, 'refs/tags/v') && env.BUTLER_API_KEY != '' && vars.ITCH_TARGET != ''
+        run: |
+          curl -sSL -o butler.zip https://broth.itch.zone/butler/linux-amd64/LATEST/archive/default
+          unzip -q butler.zip -d butler && chmod +x butler/butler
+          ver=$(node -p "require('./package.json').version")
+          ./butler/butler push dist/PizzaSim-$ver-itch.zip "${{ vars.ITCH_TARGET }}:html5" --userversion "$ver"

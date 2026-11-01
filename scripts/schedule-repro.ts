@@ -1,0 +1,20 @@
+import { createGame } from '../src/core/state';
+import * as A from '../src/core/actions';
+import { staffingGaps, withSchedule, ctxForDay } from '../src/core/forecast';
+import { rebuildWeek } from '../src/core/scheduler';
+const s = createGame('Tony', 'standard', 11); s.cash = 50000; s.level = 9; s.day = 10; s.phase = 'report';
+const st = s.stores[0];
+Object.assign(st.upgrades, { oven: 1, prep: 2, register: 1, dining: 1, storage: 2, delivery: 1, sign: 2 });
+st.rating = 3.8;
+st.staff = [];
+let id = 1000;
+const mk = (role: any, i: number, skill: number) => ({ id: ++id, name: role + i, role, skill, wage: 14, traits: [], look: { skin: 0, hair: 0, shirt: 0, pants: 0, height: 1 }, daysLeft: 3 });
+const add = (role: string, n: number, skill: number) => { for (let i = 0; i < n; i++) { st.candidates.push(mk(role, i, skill) as any); const r = A.hire(s, st, id); if (!r.ok) console.log('hire fail', r.msg); } };
+add('manager', 1, 3); add('cook', 5, 2); add('front', 6, 2); add('driver', 4, 2);
+for (const x of st.staff) x.morale = 70;
+st.weekly = true;
+(globalThis as any).__sd = 1; const r = rebuildWeek(s, st); (globalThis as any).__sd = 0;
+const view = Array.from({ length: 7 }, (_, i) => s.day + 1 + i);
+for (const x of st.staff) console.log(x.name.padEnd(9), view.map((d) => String(st.schedule[x.id][(d - 1) % 7]).padEnd(7)).join(' '), r.hours.find((q) => q.x === x)!.h);
+for (const d of view) { const g = withSchedule(st, (d - 1) % 7, () => staffingGaps(s, st, ctxForDay(s, d))); console.log('day', d, g.gaps.map((q) => `${q.window}:${q.role}+${q.extra}${q.equip ? '!' : ''}`).join(' '), 'idle', g.idle.map((q) => q.window + q.role).join(',')); }
+console.log('short', r.short.length);

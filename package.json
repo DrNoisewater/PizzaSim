@@ -1,0 +1,59 @@
+{
+  "name": "pizza-sim",
+  "productName": "Pizza SIM",
+  "version": "0.4.3",
+  "description": "Pizza SIM - a 3D pizzeria management tycoon game by Noisewater Labs",
+  "private": true,
+  "type": "module",
+  "main": "electron/main.cjs",
+  "scripts": {
+    "build": "esbuild src/main.ts --bundle --format=iife --minify --target=es2020 --outfile=dist/game.js && node scripts/assemble.mjs",
+    "build:desktop": "npm run build && node scripts/embed-fonts.mjs",
+    "typecheck": "tsc --noEmit",
+    "simtest": "tsx scripts/sim-test.ts 40",
+    "start": "npm run build:desktop && electron .",
+    "dist:win": "npm run build:desktop && electron-builder --win nsis portable --publish never",
+    "dist:win:zip": "npm run build:desktop && electron-builder --win zip --publish never"
+  },
+  "build": {
+    "appId": "com.pizzasim.game",
+    "productName": "Pizza SIM",
+    "copyright": "Copyright \u00a9 2026 Noisewater Labs",
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "files": [
+      "dist/index.html",
+      "electron/**/*",
+      "build/icon.png",
+      "package.json"
+    ],
+    "win": {
+      "target": [
+        "nsis",
+        "portable"
+      ],
+      "icon": "build/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "shortcutName": "Pizza SIM",
+      "installerIcon": "build/icon.ico",
+      "artifactName": "PizzaSIM-Setup-${version}.exe"
+    },
+    "portable": {
+      "artifactName": "PizzaSIM-${version}-portable.exe"
+    }
+  },
+  "devDependencies": {
+    "electron": "^32.2.0",
+    "electron-builder": "^25.1.8",
+    "esbuild": "^0.24.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.6.3"
+  },
+  "author": "Noisewater Labs"
+}
