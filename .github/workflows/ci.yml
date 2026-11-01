@@ -1,0 +1,42 @@
+# Runs on every pull request (and on demand): installs, tests, and builds the Windows app,
+# so the PR shows a green check or a red X before you merge.
+name: CI
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test-and-build:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - name: Install
+        run: npm ci
+      - name: Test
+        run: |
+          npm run typecheck
+          npx tsx scripts/systems-test.ts
+          npx tsx scripts/migrate-test.ts scripts/itch/save-0.3.21.json
+          npx tsx scripts/sim-test.ts 10 7 standard q
+      - name: Build
+        run: |
+          npm run build:desktop
+          npx electron-builder --win dir --x64 --publish never
+          test -f "release/win-unpacked/Pizza SIM.exe"
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: false
